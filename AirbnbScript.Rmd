@@ -1,0 +1,651 @@
+---
+title: "Analysis on Airbnb Dataset"
+author: "Group2"
+always_allow_html: true
+date: "11/13/2024"
+output:
+  pdf_document:
+    latex_engine: xelatex  # or lualatex
+  html_document:
+    df_print: paged
+---
+
+```{r include = FALSE}
+knitr::opts_chunk$set(message=FALSE, eval=TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+#Install Package
+install.packages("readxl")
+install.packages("tidyverse")
+install.packages("leaflet")
+install.packages("corrplot")
+
+#Load libraries
+library(readxl)
+library(tidyverse)  # This includes dplyr, ggplot2, and tidyr
+library(tidyr)      # Explicitly load tidyr for pivot_longer
+library(leaflet)    # Load leaflet for mapping
+library(ggcorrplot)   # Load corrplot for correlation visualization
+```
+
+## Load data into datframe
+```{r read}
+# Read the Excel file
+airbnb <- readxl::read_xlsx("AirbnbLA_2023.xlsx")
+
+# View the data 
+head(airbnb) #use head for a sample
+```
+
+## Perform Data Cleaning
+```{r data cleaning}
+# Initial data cleaning and renaming columns
+airbnb_cleaned <- airbnb %>% 
+  rename('id' = 'Id',
+         'host_id' = 'Host Id',
+         'host_name' = 'Host Name',
+         'host_is_superhost' = 'Host Is Superhost',
+         'host_acceptance_rate' = 'Host Acceptance Rate',
+         'host_response_rate' = 'Host Response Rate',
+         'host_response_time' = 'Host Response Time',
+         'host_since' = 'Host Since',
+         'neighbourhood_group' = 'Neighbourhood Group',
+         'neighbourhood' = 'Neighbourhood',
+         'latitude' = 'Latitude',
+         'longitude' = 'Longitude',
+         'room_type' = 'Room Type',
+         'accommodates' = 'Accommodates',
+         'beds' = 'Beds',
+         'price' = 'Price',
+         'instant_bookable' = 'Instant Bookable',
+         'first_review' = 'First Review',
+         'last_review' = 'Last Review',
+         'license' = 'License',
+         'reviews_per_month' = 'Reviews Per Month',
+         'minimum_nights' = 'Minimum Nights',
+         'number_of_reviews' = 'Number Of Reviews',
+         'number_of_reviews_l30d' = 'Number Of Reviews L30D',
+         'number_of_reviews_ltm' = 'Number Of Reviews Ltm',
+         'review_scores_rating' = 'Review Scores Rating',
+         'review_scores_accuracy' = 'Review Scores Accuracy',
+         'review_scores_checkin' = 'Review Scores Checkin',
+         'review_scores_cleanliness' = 'Review Scores Cleanliness',
+         'review_scores_communication' = 'Review Scores Communication',
+         'review_scores_location' = 'Review Scores Location',
+         'review_scores_value' = 'Review Scores Value'
+  )
+
+#drop licence column
+airbnb_cleaned <- select(airbnb_cleaned, -license)
+
+# Convert "N/A" values to NA
+airbnb_cleaned <- airbnb_cleaned %>%
+  mutate(
+    host_acceptance_rate = if_else(host_acceptance_rate == "N/A", NA, host_acceptance_rate),
+    host_response_rate = if_else(host_response_rate == "N/A", NA, host_response_rate),
+    host_response_time = if_else(host_response_time == "N/A", NA, host_response_time)
+  )
+
+# Impute missing review scores with the mean value of each column
+airbnb_cleaned <- airbnb_cleaned %>%
+  mutate(
+    review_scores_accuracy = if_else(is.na(review_scores_accuracy), mean(review_scores_accuracy, na.rm = TRUE), review_scores_accuracy),
+    review_scores_checkin = if_else(is.na(review_scores_checkin), mean(review_scores_checkin, na.rm = TRUE), review_scores_checkin),
+    review_scores_cleanliness = if_else(is.na(review_scores_cleanliness), mean(review_scores_cleanliness, na.rm = TRUE), review_scores_cleanliness),
+    review_scores_communication = if_else(is.na(review_scores_communication), mean(review_scores_communication, na.rm = TRUE), review_scores_communication),
+    review_scores_location = if_else(is.na(review_scores_location), mean(review_scores_location, na.rm = TRUE), review_scores_location),
+    review_scores_value = if_else(is.na(review_scores_value), mean(review_scores_value, na.rm = TRUE), review_scores_value)
+  )
+
+# Check for missing values again
+colSums(is.na(airbnb_cleaned))
+sum(is.na(airbnb_cleaned))
+
+```
+
+
+## Question 1: Which type of Airbnb properties garner the most reviews, indicating popularity? 
+
+
+```{r Question 1}
+
+#Summarise the total review, avg rating, no. of reviews across room type
+
+airbnb_popularity <- airbnb_cleaned %>%
+  group_by(room_type) %>%
+  summarise(total_reviews = sum(number_of_reviews),
+            avg_rating = sum(review_scores_rating * number_of_reviews) / sum(number_of_reviews))
+
+# Bubble chart for total reviews and avg_rating
+
+ggplot(airbnb_popularity, aes(x = total_reviews, y = avg_rating, size = total_reviews, fill = room_type)) +
+  geom_point(shape = 21, color = "black", stroke = 1) +  
+  geom_text(aes(label = paste(total_reviews, "\n", round(avg_rating, 2))),  
+            vjust = 2, color = "black", size = 5) + 
+  scale_size(range = c(3, 15), guide = "none") +       
+  scale_fill_brewer(palette = "Set1") +                
+  labs(title = "Popularity of Airbnb Room Types: Reviews vs. Ratings", 
+       x = "Total Reviews", 
+       y = "Average Rating", 
+       fill = "Room Type") +                           
+  theme_minimal() +                                  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+
+## Question 2: How does the distribution of listing types vary across different neighborhoods or regions?  
+
+
+
+
+```{r Question 2}
+
+airbnb_summary <- airbnb_cleaned %>%
+  group_by(neighbourhood_group, room_type) %>%
+  summarise(count = n(), .groups='drop') %>%
+  mutate(percentage = count / sum(count) * 100)
+
+# Plot the 100% stacked bar chart for distribution of listing types vary across different neighborhoods or regions
+
+ggplot(airbnb_summary, aes(x = neighbourhood_group, y = percentage, fill = room_type)) +
+  geom_bar(stat = "identity", position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "Neighbourhood", y = "Percentage", fill = "Room Type",
+       title = "Distribution of Listing Types by Neighbourhood") +
+  theme_minimal()
+
+```
+
+
+## Question 3: Who are the top 10 Super hosts based on listings, review scores, and number of reviews? How do their listing and review score distributions vary? 
+
+
+
+
+```{r Question 3}
+
+#Assign the rank to each host based on review score rating, number of reviews and total listings
+airbnb_groupby_unique_host <- airbnb_cleaned %>% 
+  filter(host_is_superhost = TRUE) %>% 
+  group_by(host_id, host_name) %>% 
+  summarise(avg_review_score = mean(review_scores_rating),
+            total_reviews = sum(number_of_reviews),
+            total_listing = n()) %>% 
+  ungroup() %>%  # Corrected to 'ungroup()'
+  mutate(
+    rank_review_score = rank(-avg_review_score),  # Rank by average review score rating
+    rank_number_of_reviews = rank(-total_reviews), # Rank by number of reviews
+    rank_number_of_listings = rank(-total_listing) # Rank by maximum number of listings
+  )
+
+
+# Combine the ranks (e.g., by summing them up for an overall rank)
+filtered_data <- airbnb_groupby_unique_host %>%
+  mutate(overall_rank = rank_review_score + rank_number_of_reviews + rank_number_of_listings) %>%
+  arrange(overall_rank) # Sort by the combined rank
+
+# Select the top 10 super hosts
+top_10_hosts <- filtered_data %>%
+  slice_head(n = 10) %>%
+  select(host_id, host_name, avg_review_score, total_reviews, total_listing, overall_rank)
+
+
+#Visualize top 10 Super hosts based on listings, review scores, and number of reviews
+ggplot(top_10_hosts, aes(x = total_reviews, y = avg_review_score, color = host_name, size=total_listing)) +
+  geom_point(alpha = 0.7) +
+  scale_size_continuous(range = c(3, 10)) +
+  labs(title = "Top 10 Super Hosts by Average Review Score and Total Reviews",
+       x = "Total Number of Reviews",
+       y = "Average Review Score",
+       size = "Total Listings",
+       color = "Super Host Name") +
+  theme_minimal()
+
+```
+
+## Question 4: What is the overall price trend for different room types on Airbnb? 
+
+```{r Question 4_data cleaning}
+# Calculate summary statistics for room types and see for price outliers
+
+summary_stats_by_roomType <- airbnb_cleaned %>%
+  group_by(room_type) %>%
+  summarise(
+    Average_Price = mean(price, na.rm = TRUE),
+    Median_Price = median(price, na.rm = TRUE),
+    Min_Price = min(price, na.rm = TRUE),
+    Max_Price = max(price, na.rm = TRUE),
+    SD_Price = sd(price, na.rm = TRUE)
+  )
+
+print(summary_stats_by_roomType)
+
+# Data Cleaning: Remove outliers in price using the IQR method
+remove_price_outliers <- function(data) {
+  Q1 <- quantile(data$price, 0.25, na.rm = TRUE)
+  Q3 <- quantile(data$price, 0.75, na.rm = TRUE)
+  IQR_value <- Q3 - Q1
+  lower_bound <- Q1 - 1.5 * IQR_value
+  upper_bound <- Q3 + 1.5 * IQR_value
+  data %>% filter(price >= lower_bound & price <= upper_bound)
+}
+
+airbnb_filtered <- remove_price_outliers(airbnb_cleaned)
+
+```
+
+## Plot Analysis Question4
+
+```{r Question 4}
+# Box plot of Price Distribution by Room Type
+ggplot(airbnb_filtered, aes(x = room_type, y = price, fill = room_type)) +
+  geom_boxplot() +
+  stat_summary(fun = "mean", geom = "point", shape = 18, size = 3, color = "red", fill = "red", 
+               position = position_dodge(width = 0.75)) +  # Adjusts the position of the mean marker
+  labs(title = "Price Distribution by Room Type",
+       x = "Room Type",
+       y = "Price ($)",
+       fill = "Room Type") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Question 5: How does the average price of Airbnb listings vary across different neighborhoods in Los Angeles? 
+
+```{r Question 5}
+
+# Group the data by neighborhood and calculate average price
+df_grouped <- airbnb_filtered %>%
+  group_by(neighbourhood) %>%
+  summarise(
+    Avg_Price = mean(price, na.rm = TRUE),
+    latitude = first(latitude),
+    longitude = first(longitude),
+    .groups = 'drop'
+  )
+
+print(df_grouped)
+
+# Create a color palette based on average prices
+pal <- colorNumeric(palette = "viridis", domain = df_grouped$Avg_Price)
+
+# Create the interactive map with color tones
+leaflet(df_grouped) %>%
+  addTiles() %>%
+  addCircleMarkers(
+    lng = ~longitude,
+    lat = ~latitude,
+    radius = ~Avg_Price / 50,
+    popup = ~paste(neighbourhood, ": $", round(Avg_Price, 2)),
+    color = ~pal(Avg_Price),
+    fillOpacity = 0.7
+  ) %>%
+  setView(lng = mean(df_grouped$longitude), lat = mean(df_grouped$latitude), zoom = 11) %>%
+  addLegend("bottomright", pal = pal, values = ~Avg_Price,
+            title = "Average Price",
+            opacity = 0.7)
+
+```
+## Data Modeling Visulaization
+
+```{r Question_data_modeling}
+# Impact of Beds and Accommodates on Price of Room Types
+# Checking which has more impact: Accommodates or Beds
+correlation_matrix <- airbnb_filtered %>%
+  select(price, accommodates, beds) %>%
+  cor()
+print(correlation_matrix)
+
+# Reshape the data for combined plotting
+airbnb_long <- airbnb_filtered %>%
+  pivot_longer(cols = c(beds, accommodates), names_to = "Type", values_to = "Value")
+
+# Create a single graph for Price vs. Beds and Price vs. Accommodates
+ggplot(airbnb_long, aes(x = Value, y = price)) +
+  geom_point(alpha = 0.6) +  # Adjust transparency for better visibility
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +  # Add linear regression line
+  labs(title = "Price vs. Accommodates and Beds",
+       x = "Number of Accommodates/Beds",
+       y = "Price") +
+  facet_wrap(~ Type, labeller = as_labeller(c(beds = "Number of Beds", accommodates = "Number of Accommodates"))) +
+  theme_minimal()
+
+```
+
+## Question 6: Is there a correlation between the number of reviews and overall ratings? Do hosts with more reviews tend to have better ratings?
+
+```{r Question 6}
+# Transform data for faceting
+airbnb_long <- airbnb_cleaned %>%
+  pivot_longer(cols = c(number_of_reviews, number_of_reviews_l30d, number_of_reviews_ltm),
+               names_to = "review_type",
+               values_to = "review_count")
+
+# Creating a scatter plot with a trend line
+ggplot(airbnb_long, aes(x =review_scores_rating , y = review_count)) +
+  geom_smooth(aes(color = review_type), se=FALSE) +
+  labs(title = "Correlation between Number of Reviews and Overall Rating",
+       x = "Overall Rating (Review Scores)",
+       y = "Number of Reviews") +
+  theme_minimal()
+
+```
+
+
+## Question 7: Which factors, such as the check-in process, cleanliness, accuracy of listing descriptions, etc., most significantly impact review ratings? 
+
+
+```{r Question 7}
+
+cor_matrix <- cor(airbnb_cleaned[, c("review_scores_rating", "review_scores_accuracy", 
+                                     "review_scores_cleanliness", "review_scores_communication", 
+                                     "review_scores_checkin", "review_scores_value", 
+                                     "review_scores_location")], 
+                  use = "complete.obs")
+
+print("Correlation matrix of factors impacting review ratings:")
+print(cor_matrix)
+
+# Visualize correlations
+ggcorrplot(cor_matrix, lab = TRUE, lab_size = 2, title = "Correlation Matrix of Factors Impacting Review Ratings") + 
+  theme(plot.title = element_text(size = 13), axis.text.x = element_text(size = 9), axis.text.y = element_text(size = 9))
+
+```
+
+### Summary Statistics
+
+```{r summary_statistics}
+#Summary Statistics for Listing Capacity across Room Type
+
+get_mode <- function(x) {
+  uniqx <- unique(x)
+  uniqx[which.max(tabulate(match(x, uniqx)))]
+}
+
+summary_stats_accommodates <- airbnb_cleaned %>%
+  group_by(room_type) %>% 
+  summarize(
+    mean = mean(accommodates, na.rm = TRUE),
+    median = median(accommodates, na.rm = TRUE),
+    min = min(accommodates, na.rm = TRUE),
+    max = max(accommodates, na.rm = TRUE),
+    sd = sd(accommodates, na.rm = TRUE),
+    mode = get_mode(accommodates),
+    Inter_quertile = IQR(accommodates, na.rm=TRUE),
+    count = n())
+
+summary_stats_accommodates
+```
+## Build and Evaluate Price Prediction Model
+
+```{r model_step_1}
+
+#Load the libraries
+
+library(rpart) # for creating decision tree model
+library(rattle) # for plotting decision tree model
+library(caret) # for evaluating decision tree model
+library(randomForest) # for creating random forest model
+library(rpart.plot) #for creating rpart plot
+library(ISLR)
+
+# Data Preparation and Feature Engineering
+
+#Select relevant features from the original dataset
+
+airbnb_model <- airbnb_filtered %>%
+  select(
+    host_is_superhost,      
+    room_type,              
+    accommodates,           
+    beds,                   
+    price,                 
+    instant_bookable,       
+    minimum_nights,         
+    number_of_reviews,
+    review_scores_rating,
+    reviews_per_month,
+    neighbourhood_group
+  )
+
+
+# One-Hot Encoding for categorical variables
+dummy <- dummyVars(price ~ host_is_superhost + neighbourhood_group + room_type + instant_bookable, data = airbnb_model)
+one_hot_encoded <- predict(dummy, newdata = airbnb_model)
+one_hot_encoded_df <- as.data.frame(one_hot_encoded)
+
+
+
+# Update dataset with one-hot encoded variables
+airbnb_model <- cbind(
+  airbnb_model %>% select(-host_is_superhost, -neighbourhood_group, -room_type, -instant_bookable),
+  one_hot_encoded_df
+)
+
+# Standardize numeric features for Linear Regression
+scale_features <- function(x) {
+  (x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE)
+}
+num_cols <- c("accommodates", "beds", "minimum_nights", "number_of_reviews", "review_scores_rating", "reviews_per_month")
+airbnb_model[num_cols] <- lapply(airbnb_model[num_cols], scale_features)
+
+# Apply log transformation to the target variable 'price' to stabilize variance and reduce the effect of extreme values, making the data more suitable for modeling.
+airbnb_model$price <- log(airbnb_model$price)
+
+# Create new features to improve the model
+airbnb_model$accommodates_beds <- airbnb_model$accommodates * airbnb_model$beds  # Interaction feature: accommodates × beds
+
+
+# Clean column names
+colnames(airbnb_model) <- colnames(airbnb_model) %>%
+  gsub(" ", "_", .) %>% 
+  gsub("[^A-Za-z0-9_]", "", .) %>% 
+  tolower()
+
+```
+
+## Split the Data
+
+```{r model_step_2}
+
+set.seed(123)
+
+# random sampling 70% of the rows based on the row number
+training_index <- sample(c(1:nrow(airbnb_model)), 0.7*nrow(airbnb_model))
+
+# use the index to select rows for train data set
+train <- airbnb_model[training_index, ]
+test <- airbnb_model[-training_index, ]
+
+# check the dimensions of the training and test data set
+dim(train)
+dim(test)
+
+```
+
+
+## Linear Regression Model
+
+```{r model_linear}
+#Train the Linear Regression Model
+
+lm_model <- lm(price ~ .+I(accommodates^2), data = train)
+
+#Predictions and Evaluation
+predictions_lm <- predict(lm_model, newdata = test)
+
+#Extract the true label
+true_label <- test$price
+
+# Evaluation Metrics
+mse_lm <- mean((true_label - predictions_lm)^2)
+rmse_lm <- sqrt(mse_lm)
+SS_res_lm <- sum((true_label - predictions_lm)^2)
+SS_tot_lm <- sum((true_label - mean(true_label))^2)
+r_squared_lm <- 1 - (SS_res_lm / SS_tot_lm)
+
+# Print Metrics
+cat("Linear Regression Model - Mean Squared Error (MSE):", mse_lm, "\n")
+cat("Linear Regression Model - Root Mean Squared Error (RMSE):", rmse_lm, "\n")
+cat("Linear Regression Model - R-squared (R²):", r_squared_lm, "\n")
+
+```
+
+## Decision Tree
+
+```{r model_Decision Tree}
+
+# Set stopping parameters
+control_params <- rpart.control(
+  minsplit = 30,   # Minimum observations to split a node
+  minbucket = 3,   # Minimum observations in a leaf node
+  cp = 0.001,       # Complexity parameter
+  maxdepth = 30    # Maximum depth of the tree
+)
+
+
+
+#Build the Decision tree model
+dt_model <- rpart(price ~ ., data = train, method =  "anova", control = control_params)
+
+#Predictions and Evaluation
+predictions_dt <- predict(dt_model, newdata = test)
+
+#Extract the true label
+true_label <- test$price
+
+# Evaluation Metrics
+mse_dt <- mean((true_label - predictions_dt)^2)
+rmse_dt <- sqrt(mse_dt)
+SS_res_dt <- sum((true_label - predictions_dt)^2)
+SS_tot_dt <- sum((true_label - mean(true_label))^2)
+r_squared_dt <- 1 - (SS_res_dt / SS_tot_dt)
+
+# Print Metrics
+cat("Decision Tree Regression Model - Mean Squared Error (MSE):", mse_dt, "\n")
+cat("Decision Tree Regression Model - Root Mean Squared Error (RMSE):", rmse_dt, "\n")
+cat("Decision Tree Regression Model - R-squared (R²):", r_squared_dt, "\n")
+
+```
+
+## Check if Decision Tree model is overfitted or not.
+
+```{r model_DT_Overfit_check}
+
+#Predictions for Decision Tree on Training Data
+predictions_dt_train <- predict(dt_model, newdata = train)
+
+#Extract the train label
+train_label <- train$price
+
+mse_dt_train <- mean((train_label - predictions_dt_train)^2)
+rmse_dt_train <- sqrt(mse_dt_train)
+SS_res_dt_train <- sum((train_label - predictions_dt_train)^2)
+SS_tot_dt_train <- sum((train_label - mean(train_label))^2)
+
+# R-squared (proportion of variance explained)
+r_squared_dt_train <- 1 - (SS_res_dt_train / SS_tot_dt_train)
+
+# Print the Training Metrics
+cat("Training Metrics for Decision Tree Model:\n")
+cat("DT MSE (Train):", mse_dt_train, "\n")
+cat("DT RMSE (Train):", rmse_dt_train, "\n")
+cat("DT R-squared (Train):", r_squared_dt_train, "\n")
+
+
+```
+## Random Forest
+
+```{r model_Random_Forest_Tree}
+
+#Build the Random Forest Regression model
+rf_model <- randomForest(price ~ ., data = train, ntree = 100, mtry = 3)
+
+#Predictions and Evaluation
+predictions_rf <- predict(rf_model, newdata = test)
+
+#Extract Actual label
+true_label <- test$price
+
+# Evaluation Metrics
+mse_rf <- mean((true_label - predictions_rf)^2)
+rmse_rf <- sqrt(mse_rf)
+SS_res_rf <- sum((true_label - predictions_rf)^2)
+SS_tot_rf <- sum((true_label - mean(true_label))^2)
+r_squared_rf <- 1 - (SS_res_rf / SS_tot_rf)
+
+# Print Metrics
+cat("Random Forest Regression Model - Mean Squared Error (MSE):", mse_rf, "\n")
+cat("Random Forest Regression Model - Root Mean Squared Error (RMSE):", rmse_rf, "\n")
+cat("Random Forest Regression Model - R-squared (R²):", r_squared_rf, "\n")
+
+```
+
+## Check if the Random Forest model is overfitted or not.
+
+```{r model_rf_overfit}
+
+# Predictions for Random Forest on Training Data
+predictions_rf_train <- predict(rf_model, newdata = train)
+
+#Extract the train label
+train_label <- train$price
+
+
+# Evaluate the Random Forest Model on Training Data
+
+mse_rf_train <- mean((train_label - predictions_rf_train)^2)
+rmse_rf_train <- sqrt(mse_rf_train)
+SS_res_rf_train <- sum((train_label - predictions_rf_train)^2)
+SS_tot_rf_train <- sum((train_label - mean(train_label))^2)
+
+# R-squared (proportion of variance explained)
+r_squared_rf_train <- 1 - (SS_res_rf_train / SS_tot_rf_train)
+
+# Print the Training Metrics
+cat("Training Metrics for Random Forest Model:\n")
+cat("RF MSE (Train):", mse_rf_train, "\n")
+cat("RF RMSE (Train):", rmse_rf_train, "\n")
+cat("RF R-squared (Train):", r_squared_rf_train, "\n")
+```
+
+## Feature Importance
+
+```{r model_Feature Importance}
+# Extract feature importance from the Random Forest model
+feature_importance <- importance(rf_model)
+ 
+# Print the feature importance to inspect its structure
+print(feature_importance)
+ 
+# Convert importance values into a data frame for visualization
+feature_importance_df <- data.frame(
+  Feature = rownames(feature_importance),
+  Importance = feature_importance[, "IncNodePurity"]
+) %>%
+  arrange(desc(Importance))  # Sort features by importance
+ 
+# Plot the feature importance
+ggplot(feature_importance_df, aes(x = Importance, y = reorder(Feature, Importance))) +
+  geom_bar(stat = "identity", fill = "skyblue") +  # Horizontal bar chart
+  theme_minimal() +
+  labs(
+    title = "Feature Importance (Random Forest)",  # Chart title
+    x = "Importance (Increase in Node Purity)",    # X-axis label
+    y = "Features"                                # Y-axis label
+  ) +
+  theme(axis.text.y = element_text(size = 10))  # Adjust font size for readability
+
+```
+
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
