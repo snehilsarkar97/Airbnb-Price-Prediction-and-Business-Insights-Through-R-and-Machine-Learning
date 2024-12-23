@@ -48,16 +48,6 @@ The dataset includes details on Airbnb listings, including pricing, host feature
 - **Feature Engineering**: Created interaction features like `Accommodates_beds` and applied one-hot encoding to prepare the data for modeling.
 - **Normalization**: Normalized numerical features to improve model performance.
 
-## Model Development
-
-Three models were developed to predict Airbnb listing prices:
-
-1. **Linear Regression**: A simple linear model.
-2. **Decision Tree**: A tree-based model to capture non-linear relationships.
-3. **Random Forest**: An ensemble model for improved accuracy.
-
-### Best Model:
-- **Random Forest**: Achieved the best performance with **RMSE = 0.38** and **R² = 0.59**, outperforming both linear regression and decision tree models.
 
 ## Key Insights
 
@@ -85,6 +75,14 @@ Three models were developed to predict Airbnb listing prices:
 - **Entire home/apartment listings** dominate across all regions, comprising over 75% of listings.
 - **Private room listings** account for 20-25%, while **shared rooms** and **hotel rooms** represent less than 10% in each region.
 
+## Model Development
+
+Three models were developed to predict Airbnb listing prices:
+
+1. **Linear Regression**: A simple linear model.
+2. **Decision Tree**: A tree-based model to capture non-linear relationships.
+3. **Random Forest**: An ensemble model for improved accuracy.
+
 ## Pricing Model Performance
 
 ### Top Features Influencing Price:
@@ -104,10 +102,8 @@ Three models were developed to predict Airbnb listing prices:
 3. **Location Drives Pricing**: Coastal and luxury neighborhoods command higher prices, while inland areas are more affordable.
 4. **Reviews Impact Success**: Positive reviews lead to more bookings and higher income.
 
-## Interactive Visualizations
-
-- **Geographical Analysis**: Interactive maps showing regional price distribution and listing popularity across neighborhoods.
-- **Correlation Analysis**: Visualized correlations between features like reviews, location, and pricing.
+## Best Model
+**Random Forest**: Achieved the best performance with **RMSE = 0.38** and **R² = 0.59**, outperforming both linear regression and decision tree models.
 
 ## Conclusion
 
